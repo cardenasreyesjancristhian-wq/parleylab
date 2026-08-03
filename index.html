@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>ParleyLab 2.5</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">CENTRO PERSONAL DE ANÁLISIS</p>
+      <h1>ParleyLab <span class="version-badge">2.5</span></h1>
+      <p class="subtitle">Centro inteligente de análisis deportivo.</p>
+    </div>
+    <button id="refreshBtn" class="secondary" type="button">Actualizar</button>
+  </header>
+
+  <main class="shell">
+    <section class="hero card">
+      <div><p class="eyebrow">RESUMEN DEL DÍA</p><h2>Tu jornada deportiva, en un solo lugar.</h2><p class="muted">Datos oficiales, contexto del partido y constructor manual de parleys.</p></div>
+      <div class="live-data"><span></span><div><strong>Datos conectados</strong><small>MLB + clima</small></div></div>
+    </section>
+
+    <section class="sport-tabs">
+      <button class="sport-tab active"><span>⚾</span><strong>MLB</strong><small>Disponible</small></button>
+      <button class="sport-tab" disabled><span>⚾</span><strong>LMB</strong><small>Próximamente</small></button>
+      <button class="sport-tab" disabled><span>⚽</span><strong>Liga MX</strong><small>Próximamente</small></button>
+    </section>
+    <section class="controls card">
+      <label>
+        Fecha
+        <input id="dateInput" type="date" />
+      </label>
+      <label>
+        Filtro
+        <select id="statusFilter">
+          <option value="all">Todos</option>
+          <option value="scheduled">Próximos</option>
+          <option value="live">En vivo</option>
+          <option value="final">Finalizados</option>
+        </select>
+      </label>
+      <label>
+        Buscar
+        <input id="searchInput" type="search" placeholder="Equipo o estadio" />
+      </label>
+    </section>
+
+    <section class="summary-grid">
+      <article class="metric card">
+        <span>Juegos</span>
+        <strong id="gamesCount">0</strong>
+      </article>
+      <article class="metric card">
+        <span>Pitchers confirmados</span>
+        <strong id="pitchersCount">0</strong>
+      </article>
+      <article class="metric card">
+        <span>En vivo</span>
+        <strong id="liveCount">0</strong>
+      </article>
+      <article class="metric card market-metric">
+        <span>Mercados</span>
+        <strong id="marketStatus">—</strong>
+      </article>
+      <article class="metric card model-metric">
+        <span>Modelo</span>
+        <strong id="modelStatus">Heurístico</strong>
+      </article>
+    </section>
+
+    <section class="notice" id="notice">
+      Actualización 2.5: selector completo de mercados y constructor de parley mejorado.
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">JORNADA</p>
+          <h2>Juegos MLB</h2>
+        </div>
+        <span id="lastUpdated" class="muted"></span>
+      </div>
+      <div id="loading" class="loading card">Cargando jornada...</div>
+      <div id="gamesGrid" class="games-grid" hidden></div>
+      <div id="emptyState" class="empty card" hidden>No se encontraron juegos para esta fecha.</div>
+    </section>
+
+    <section class="parley-section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">BOLETO</p>
+          <h2>Constructor de parley</h2>
+        </div>
+        <button id="clearParleyBtn" class="ghost" type="button">Limpiar</button>
+      </div>
+      <div class="parley-layout">
+        <div id="parleyPicks" class="card picks-panel">
+          <p class="muted">Agrega selecciones manualmente desde cada juego.</p>
+        </div>
+        <aside class="card calculator">
+          <label>
+            Stake (MXN)
+            <input id="stakeInput" type="number" min="0" step="10" value="100" />
+          </label>
+          <div class="calc-row"><span>Selecciones</span><strong id="pickCount">0</strong></div>
+          <div class="calc-row"><span>Cuota decimal</span><strong id="combinedOdds">1.00</strong></div>
+          <div class="calc-row"><span>Momio americano</span><strong id="combinedAmerican">—</strong></div>
+          <div class="calc-row"><span>Prob. implícita</span><strong id="impliedProbability">100.0%</strong></div>
+          <div class="calc-row"><span>Ganancia potencial</span><strong id="potentialProfit">$0.00</strong></div>
+          <div class="calc-row total"><span>Retorno potencial</span><strong id="potentialReturn">$100.00</strong></div>
+          <div id="parleyWarning" class="parley-warning" hidden></div>
+          <p class="fine-print">La probabilidad implícita no es una predicción real ni garantiza resultados.</p>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button data-scroll="top" class="active"><span>⌂</span><small>Inicio</small></button>
+    <button data-scroll="gamesGrid"><span>⚾</span><small>MLB</small></button>
+    <button data-scroll="parleyPicks" class="primary-nav"><span>＋</span><small>Parley</small><b id="navPickCount" class="nav-badge" hidden>0</b></button>
+    <button disabled><span>▥</span><small>Historial</small></button>
+    <button disabled><span>⚙</span><small>Ajustes</small></button>
+  </nav>
+
+  <dialog id="gameDialog">
+    <form method="dialog" class="dialog-card">
+      <button class="dialog-close" aria-label="Cerrar">×</button>
+      <div id="dialogContent" class="analysis-content"></div>
+    </form>
+  </dialog>
+
+  <template id="gameCardTemplate">
+    <article class="game-card card">
+      <div class="game-card-top">
+        <span class="status-pill"></span>
+        <span class="game-time"></span>
+      </div>
+      <div class="matchup">
+        <div class="team away">
+          <span class="team-name"></span>
+          <small class="team-record"></small>
+        </div>
+        <span class="at">@</span>
+        <div class="team home">
+          <span class="team-name"></span>
+          <small class="team-record"></small>
+        </div>
+      </div>
+      <div class="meta-list">
+        <div><span>Pitchers</span><strong class="pitchers"></strong></div>
+        <div><span>Estadio</span><strong class="venue"></strong></div>
+        <div><span>Clima</span><strong class="weather"></strong></div>
+      </div>
+      <div class="card-actions">
+        <button class="secondary details-btn" type="button">Ver análisis</button>
+        <button class="primary add-pick-btn" type="button">Ver mercados</button>
+      </div>
+    </article>
+  </template>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js" defer></script>
+</body>
+</html>
