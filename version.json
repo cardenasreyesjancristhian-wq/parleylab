@@ -1,0 +1,21 @@
+{
+  "version": "5.0.0",
+  "channel": "stable-mobile",
+  "releaseName": "Analista heurístico y parley inteligente",
+  "releasedAt": "2026-08-03",
+  "updateFiles": [
+    "app.js",
+    "styles.css",
+    "version.json"
+  ],
+  "features": [
+    "Oportunidades del día",
+    "Confianza heurística por pick",
+    "Probabilidad de modelo estimada",
+    "Probabilidad implícita del mercado",
+    "EV estimado",
+    "Calificación A, B+, B y C+",
+    "Parley inteligente de hasta 3 selecciones no duplicadas por juego"
+  ],
+  "disclaimer": "Las probabilidades, confianza y EV son estimaciones heurísticas no validadas."
+}
