@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0b1220" />
-  <title>ParleyLab 2.2</title>
+  <title>ParleyLab 2.3</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <p class="eyebrow">CENTRO PERSONAL DE ANÁLISIS</p>
-      <h1>ParleyLab <span class="version-badge">2.2</span></h1>
+      <h1>ParleyLab <span class="version-badge">2.3</span></h1>
       <p class="subtitle">Centro inteligente de análisis deportivo.</p>
     </div>
     <button id="refreshBtn" class="secondary" type="button">Actualizar</button>
@@ -61,10 +61,14 @@
         <span>En vivo</span>
         <strong id="liveCount">0</strong>
       </article>
+      <article class="metric card market-metric">
+        <span>Mercados</span>
+        <strong id="marketStatus">—</strong>
+      </article>
     </section>
 
     <section class="notice" id="notice">
-      Actualización 2.2: bullpen, forma reciente y últimas aperturas. Las cuotas de Playdoit siguen capturándose manualmente.
+      Actualización 2.3: moneyline, run line y totales mediante una conexión segura con The Odds API.
     </section>
 
     <section>

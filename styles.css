@@ -382,3 +382,50 @@ body{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
 }
 .recent-list span { color:var(--muted); font-size:.68rem; }
 .recent-list strong { font-size:.72rem; text-align:right; }
+
+
+/* ParleyLab 2.3 — cuotas y mercados */
+.summary-grid { grid-template-columns: repeat(4, 1fr); }
+.market-metric strong { color: var(--accent); font-size: 1.15rem; }
+.market-preview { margin-top: .2rem; }
+.market-preview strong { color: var(--accent); }
+.market-source {
+  display:grid; grid-template-columns:repeat(2,1fr); gap:.7rem; margin-bottom:.8rem;
+}
+.market-source div {
+  padding:.75rem; border-radius:13px; background:#091426; border:1px solid var(--border);
+}
+.market-source span { display:block; color:var(--muted); font-size:.68rem; margin-bottom:.2rem; }
+.market-block {
+  margin:.8rem 0; padding:.85rem; border-radius:16px;
+  background:rgba(255,255,255,.03); border:1px solid var(--border);
+}
+.market-heading { display:flex; justify-content:space-between; align-items:center; gap:.7rem; margin-bottom:.7rem; }
+.market-heading h3 { margin:0; font-size:.95rem; }
+.market-heading span { color:var(--muted); font-size:.68rem; }
+.market-options { display:grid; grid-template-columns:repeat(2,1fr); gap:.6rem; }
+.market-option {
+  display:grid; gap:.2rem; text-align:left; padding:.8rem;
+  border-radius:13px; border:1px solid var(--border);
+  background:#091426; color:var(--text);
+}
+.market-option:hover, .market-option:focus {
+  border-color:rgba(94,234,212,.45);
+}
+.market-option span { font-size:.76rem; color:var(--muted); }
+.market-option strong { font-size:1rem; color:var(--accent); }
+.market-option small { font-size:.62rem; color:var(--muted); }
+.market-empty {
+  padding:.8rem; border-radius:12px; background:#091426; color:var(--muted); font-size:.75rem;
+}
+.manual-market-grid {
+  display:grid; grid-template-columns:repeat(2,1fr); gap:.55rem;
+}
+.manual-market-button {
+  padding:.7rem; border-radius:12px; border:1px dashed rgba(94,234,212,.28);
+  background:rgba(94,234,212,.055); color:var(--text); font-weight:750;
+}
+@media(max-width:760px) {
+  .summary-grid { grid-template-columns:repeat(2,1fr); }
+  .market-source { grid-template-columns:1fr; }
+}

@@ -8,6 +8,8 @@ const state = {
   filteredGames: [],
   parley: safelyLoadParley(),
   cache: new Map(),
+  odds: [],
+  oddsAvailable: false,
 };
 
 const els = {
@@ -21,6 +23,7 @@ const els = {
   gamesCount: document.querySelector("#gamesCount"),
   pitchersCount: document.querySelector("#pitchersCount"),
   liveCount: document.querySelector("#liveCount"),
+  marketStatus: document.querySelector("#marketStatus"),
   lastUpdated: document.querySelector("#lastUpdated"),
   template: document.querySelector("#gameCardTemplate"),
   dialog: document.querySelector("#gameDialog"),
@@ -69,6 +72,7 @@ async function loadGames() {
     const data = await fetchJson(`${MLB_SCHEDULE_URL}?${params}`);
     const rawGames = data.dates?.flatMap(day => day.games || []) || [];
     state.games = await Promise.all(rawGames.map(normalizeGame));
+    await loadOdds();
     applyFilters();
     els.lastUpdated.textContent = `Actualizado ${formatTime(new Date())}`;
   } catch (error) {
@@ -154,6 +158,13 @@ function renderGames() {
     node.querySelector(".pitchers").textContent = `${game.awayPitcher} vs ${game.homePitcher}`;
     node.querySelector(".venue").textContent = [game.venue, game.city].filter(Boolean).join(" · ");
     node.querySelector(".weather").textContent = weatherText(game.weather);
+    const matchedOdds = findOddsForGame(game);
+    if (matchedOdds) {
+      const marketSummary = document.createElement("div");
+      marketSummary.className = "market-preview";
+      marketSummary.innerHTML = renderMarketPreview(matchedOdds, game);
+      node.querySelector(".meta-list").appendChild(marketSummary);
+    }
 
     node.querySelector(".details-btn").addEventListener("click", () => showGameDetails(game));
     node.querySelector(".add-pick-btn").addEventListener("click", () => addManualPick(game));
@@ -173,6 +184,7 @@ async function showGameDetails(game) {
       <button class="analysis-tab" type="button" data-panel="offensePanel">Ofensivas</button>
       <button class="analysis-tab" type="button" data-panel="bullpenPanel">Bullpen</button>
       <button class="analysis-tab" type="button" data-panel="formPanel">Forma reciente</button>
+      <button class="analysis-tab" type="button" data-panel="oddsPanel">Cuotas</button>
     </div>
 
     <section id="summaryPanel" class="analysis-panel active">
@@ -195,6 +207,10 @@ async function showGameDetails(game) {
       <div class="analysis-loading">Cargando forma reciente y últimas aperturas…</div>
     </section>
 
+    <section id="oddsPanel" class="analysis-panel">
+      <div class="analysis-loading">Cargando moneyline, run line y totales…</div>
+    </section>
+
     <p class="fine-print analysis-disclaimer">
       Las estadísticas corresponden a la temporada seleccionada y dependen de la información disponible en MLB. No constituyen una recomendación de apuesta.
     </p>`;
@@ -208,6 +224,7 @@ async function showGameDetails(game) {
     loadOffensePanel(game, season),
     loadBullpenPanel(game, season),
     loadFormPanel(game, season),
+    loadOddsPanel(game),
   ]);
 }
 
@@ -719,6 +736,318 @@ function shiftDate(value, days) {
   return date.toISOString().slice(0, 10);
 }
 
+
+async function loadOdds() {
+  try {
+    const data = await fetchJson("/api/odds");
+    state.odds = Array.isArray(data.events) ? data.events : [];
+    state.oddsAvailable = true;
+    if (els.marketStatus) els.marketStatus.textContent = state.odds.length ? "Activo" : "Sin juegos";
+  } catch (error) {
+    console.warn("Odds unavailable", error);
+    state.odds = [];
+    state.oddsAvailable = false;
+    if (els.marketStatus) els.marketStatus.textContent = "Manual";
+  }
+}
+
+function findOddsForGame(game) {
+  if (!state.odds.length) return null;
+
+  return state.odds
+    .map(event => ({
+      event,
+      score: teamMatchScore(game.away, event.awayTeam) +
+             teamMatchScore(game.home, event.homeTeam) +
+             timeMatchScore(game.start, event.commenceTime),
+    }))
+    .filter(item => item.score >= 2.4)
+    .sort((a, b) => b.score - a.score)[0]?.event || null;
+}
+
+function teamMatchScore(left, right) {
+  const a = normalizeTeamName(left);
+  const b = normalizeTeamName(right);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return .8;
+
+  const aTokens = new Set(a.split(" "));
+  const bTokens = new Set(b.split(" "));
+  const overlap = [...aTokens].filter(token => bTokens.has(token)).length;
+  return overlap / Math.max(aTokens.size, bTokens.size);
+}
+
+function timeMatchScore(left, right) {
+  const a = new Date(left).getTime();
+  const b = new Date(right).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  const hours = Math.abs(a - b) / 3600000;
+  if (hours <= 1) return 1;
+  if (hours <= 3) return .6;
+  return 0;
+}
+
+function normalizeTeamName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function loadOddsPanel(game) {
+  const panel = document.getElementById("oddsPanel");
+  if (!panel) return;
+
+  const odds = findOddsForGame(game);
+  if (!state.oddsAvailable) {
+    panel.innerHTML = renderOddsUnavailable(game);
+    setupManualMarketButtons(panel, game);
+    return;
+  }
+
+  if (!odds) {
+    panel.innerHTML = `
+      <div class="analysis-note">
+        No se encontró un evento equivalente en The Odds API. Puedes registrar manualmente los momios de Playdoit.
+      </div>
+      ${renderManualMarkets(game)}`;
+    setupManualMarketButtons(panel, game);
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="market-source">
+      <div>
+        <span>Casa utilizada</span>
+        <strong>${escapeHtml(odds.bookmaker || "Disponible")}</strong>
+      </div>
+      <div>
+        <span>Actualización</span>
+        <strong>${escapeHtml(formatDateTime(odds.lastUpdate || odds.commenceTime))}</strong>
+      </div>
+    </div>
+
+    ${renderMoneylineMarket(odds, game)}
+    ${renderSpreadMarket(odds, game)}
+    ${renderTotalMarket(odds, game)}
+
+    <h3 class="subsection-title">Captura manual de Playdoit</h3>
+    ${renderManualMarkets(game)}
+
+    <p class="fine-print">
+      La probabilidad mostrada es implícita en el momio. No es una probabilidad calculada por ParleyLab ni representa valor esperado.
+    </p>`;
+
+  setupMarketButtons(panel, game);
+  setupManualMarketButtons(panel, game);
+}
+
+function renderOddsUnavailable(game) {
+  return `
+    <div class="analysis-note">
+      La función segura de cuotas todavía no está configurada. Agrega <strong>ODDS_API_KEY</strong> en Vercel y vuelve a desplegar.
+    </div>
+    ${renderManualMarkets(game)}`;
+}
+
+function renderMarketPreview(odds, game) {
+  const away = odds.moneyline?.away;
+  const home = odds.moneyline?.home;
+  const total = odds.total?.point;
+  return `
+    <span>Mercado</span>
+    <strong>${away != null ? formatAmerican(away) : "—"} / ${home != null ? formatAmerican(home) : "—"} · Total ${total ?? "—"}</strong>`;
+}
+
+function renderMoneylineMarket(odds, game) {
+  const away = odds.moneyline?.away;
+  const home = odds.moneyline?.home;
+  if (!isValidAmericanOdds(Number(away)) || !isValidAmericanOdds(Number(home))) {
+    return marketEmpty("Moneyline");
+  }
+
+  const awayProb = americanImpliedProbability(away);
+  const homeProb = americanImpliedProbability(home);
+  const noVig = removeTwoWayVig(awayProb, homeProb);
+
+  return `
+    <section class="market-block">
+      <div class="market-heading"><h3>Moneyline</h3><span>Ganador</span></div>
+      <div class="market-options">
+        ${marketButton(game.away, away, "moneyline", game.away, noVig.away)}
+        ${marketButton(game.home, home, "moneyline", game.home, noVig.home)}
+      </div>
+    </section>`;
+}
+
+function renderSpreadMarket(odds, game) {
+  const away = odds.spread?.away;
+  const home = odds.spread?.home;
+  if (!away || !home || !isValidAmericanOdds(Number(away.price)) || !isValidAmericanOdds(Number(home.price))) {
+    return marketEmpty("Run Line");
+  }
+
+  return `
+    <section class="market-block">
+      <div class="market-heading"><h3>Run Line</h3><span>Hándicap</span></div>
+      <div class="market-options">
+        ${marketButton(`${game.away} ${formatPoint(away.point)}`, away.price, "spread", `${game.away} ${formatPoint(away.point)}`)}
+        ${marketButton(`${game.home} ${formatPoint(home.point)}`, home.price, "spread", `${game.home} ${formatPoint(home.point)}`)}
+      </div>
+    </section>`;
+}
+
+function renderTotalMarket(odds, game) {
+  const over = odds.total?.over;
+  const under = odds.total?.under;
+  const point = odds.total?.point;
+  if (point == null || !isValidAmericanOdds(Number(over)) || !isValidAmericanOdds(Number(under))) {
+    return marketEmpty("Total");
+  }
+
+  return `
+    <section class="market-block">
+      <div class="market-heading"><h3>Total ${point}</h3><span>Over / Under</span></div>
+      <div class="market-options">
+        ${marketButton(`Over ${point}`, over, "total", `Over ${point}`)}
+        ${marketButton(`Under ${point}`, under, "total", `Under ${point}`)}
+      </div>
+    </section>`;
+}
+
+function marketButton(label, price, market, selection, noVigProbability = null) {
+  const implied = americanImpliedProbability(price);
+  return `
+    <button class="market-option" type="button"
+      data-market="${escapeHtml(market)}"
+      data-selection="${escapeHtml(selection)}"
+      data-price="${Number(price)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${formatAmerican(price)}</strong>
+      <small>Implícita ${(implied * 100).toFixed(1)}%${noVigProbability != null ? ` · Sin vig ${(noVigProbability * 100).toFixed(1)}%` : ""}</small>
+    </button>`;
+}
+
+function marketEmpty(title) {
+  return `
+    <section class="market-block">
+      <div class="market-heading"><h3>${title}</h3><span>No disponible</span></div>
+      <div class="market-empty">La casa seleccionada no publicó este mercado.</div>
+    </section>`;
+}
+
+function renderManualMarkets(game) {
+  return `
+    <div class="manual-market-grid">
+      <button class="manual-market-button" type="button" data-manual-selection="${escapeHtml(game.away)} ML">Visitante ML</button>
+      <button class="manual-market-button" type="button" data-manual-selection="${escapeHtml(game.home)} ML">Local ML</button>
+      <button class="manual-market-button" type="button" data-manual-selection="Over">Over</button>
+      <button class="manual-market-button" type="button" data-manual-selection="Under">Under</button>
+      <button class="manual-market-button" type="button" data-manual-selection="${escapeHtml(game.away)} Run Line">Visitante RL</button>
+      <button class="manual-market-button" type="button" data-manual-selection="${escapeHtml(game.home)} Run Line">Local RL</button>
+    </div>`;
+}
+
+function setupMarketButtons(panel, game) {
+  panel.querySelectorAll(".market-option").forEach(button => {
+    button.addEventListener("click", () => {
+      addPickToParley({
+        game,
+        selection: button.dataset.selection,
+        american: Number(button.dataset.price),
+        source: "The Odds API",
+        market: button.dataset.market,
+      });
+    });
+  });
+}
+
+function setupManualMarketButtons(panel, game) {
+  panel.querySelectorAll(".manual-market-button").forEach(button => {
+    button.addEventListener("click", () => {
+      const baseSelection = button.dataset.manualSelection || "";
+      const line = (baseSelection === "Over" || baseSelection === "Under")
+        ? prompt(`Escribe la línea para ${baseSelection}, por ejemplo 8.5`)
+        : null;
+      const selection = line ? `${baseSelection} ${line}` : baseSelection;
+      const price = Number(prompt(`Escribe el momio americano de Playdoit para ${selection}`));
+
+      if (!selection.trim() || !isValidAmericanOdds(price)) {
+        alert("Selección o momio inválido.");
+        return;
+      }
+
+      addPickToParley({
+        game,
+        selection,
+        american: price,
+        source: "Playdoit manual",
+        market: "manual",
+      });
+    });
+  });
+}
+
+function addPickToParley({ game, selection, american, source, market }) {
+  if (!isValidAmericanOdds(Number(american))) {
+    alert("Momio inválido.");
+    return;
+  }
+
+  const duplicate = state.parley.some(item =>
+    item.gameId === game.id && item.selection === selection
+  );
+  if (duplicate) {
+    alert("Esta selección ya está en tu parley.");
+    return;
+  }
+
+  state.parley.push({
+    id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+    gameId: game.id,
+    matchup: `${game.away} @ ${game.home}`,
+    selection,
+    american: Number(american),
+    decimal: americanToDecimal(Number(american)),
+    source,
+    market,
+  });
+  persistParley();
+  renderParley();
+  alert(`${selection} se agregó al parley.`);
+}
+
+function americanImpliedProbability(american) {
+  const value = Number(american);
+  if (!isValidAmericanOdds(value)) return 0;
+  return value > 0
+    ? 100 / (value + 100)
+    : Math.abs(value) / (Math.abs(value) + 100);
+}
+
+function removeTwoWayVig(away, home) {
+  const total = away + home;
+  if (!total) return { away: 0, home: 0 };
+  return { away: away / total, home: home / total };
+}
+
+function formatAmerican(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return number > 0 ? `+${number}` : String(number);
+}
+
+function formatPoint(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  return number > 0 ? `+${number}` : String(number);
+}
+
+
 function addManualPick(game) {
   const selection = prompt(
     `Escribe tu selección para ${game.away} @ ${game.home}\nEjemplo: ${game.home} ML`
@@ -733,16 +1062,13 @@ function addManualPick(game) {
     return;
   }
 
-  state.parley.push({
-    id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
-    gameId: game.id,
-    matchup: `${game.away} @ ${game.home}`,
+  addPickToParley({
+    game,
     selection: selection.trim(),
     american,
-    decimal: americanToDecimal(american),
+    source: "Manual",
+    market: "manual",
   });
-  persistParley();
-  renderParley();
 }
 
 function renderParley() {
@@ -757,7 +1083,7 @@ function renderParley() {
       row.innerHTML = `
         <div>
           <div class="pick-title">${escapeHtml(pick.selection)}</div>
-          <div class="pick-subtitle">${escapeHtml(pick.matchup)}</div>
+          <div class="pick-subtitle">${escapeHtml(pick.matchup)}${pick.source ? ` · ${escapeHtml(pick.source)}` : ""}</div>
         </div>
         <input class="pick-odds" type="number" value="${pick.american}" aria-label="Momio americano" />
         <button class="remove-pick" type="button" aria-label="Eliminar">×</button>`;
@@ -950,7 +1276,7 @@ function setLoading(value) {
 function restoreNotice() {
   const notice = document.querySelector("#notice");
   notice.textContent =
-    "Actualización 2.2: bullpen, forma reciente y últimas aperturas. Las cuotas de Playdoit siguen capturándose manualmente.";
+    "Actualización 2.3: moneyline, run line y totales mediante una conexión segura con The Odds API.";
   notice.style.borderColor = "";
   notice.style.background = "";
   notice.style.color = "";
